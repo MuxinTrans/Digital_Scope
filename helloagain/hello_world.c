@@ -19,24 +19,27 @@
 #include "ctrl.h"
 #include "system.h"
 
-#define Vref 2000		// 0V²Î¿¼ÊäÈëÖµ
+#define Vref 2000		// 0Vå‚è€ƒè¾“å…¥å€¼
 #define Mul1 3.917
 #define Mul2 1/5.6
 #define Mul3 1/117.33
 // switch_mod =2--Mul1; =1--Mul2; =0--Mul3;
 
 double vpp, vmax, vmin, fre_meas, vac_zero;
+double vpp2, vmax2, vmin2, fre_meas2, vac_zero2;
 u16 rdv = 0, rdmax = 0, rdmin = 0, rdac_zero;
 int KW_word, Times;
 int signal_num = 0;
-int sig1[4096] = {0}, sig2[4096] = {0};		// 1µ±Ç° 2´æ´¢
-float sig1_real[4096] = {0};
+int sig1[512] = {0};
+double sig_real2[512] = {0};		// 1å½“å‰ 2å­˜å‚¨
+float sig1_real[512] = {0};
 
 //flag
-int clk_rd, storage_done;	//0Î´1ÒÑ
+int clk_rd, storage_done;	//0æœª1å·²
 int KW_init = pow(2,32)/401, Times_init = 100100;
 int switch_mod = 3, choosed = 0;
 double Mult;
+
 //int x_mod,y_mod;
 
 void init();
@@ -47,16 +50,18 @@ void getSampclk(float fre_now);
 double getFre();
 void disFre(double fre_now);
 double getVpp(double vrd);
-void Amp(int ifshow);
+void Amp(int ifAmp);
+void disAmp(double v2wr,int w);
 
 void fifo_sto(void);
-void Paint_w(int ww,float fre_now);
-void Storage(void);
+void XYTrans(int ww,float fre_now);
+void Storage(int ifStore);
+void Auto(int ifAuto);
 
 void setSwitch();
 
 int main() {
-	//¿ªÊ¼Ö´ĞĞ³ÌĞò
+	//å¼€å§‹æ‰§è¡Œç¨‹åº
 	printf("Hello lemon\n");
 	if (deviceInit() < 0) {
 		printf("device initial failed\n");
@@ -65,13 +70,11 @@ int main() {
 
 	lcdRectClear(0, 0, 799, 479, WHITE);
 
-//	init();
+	init();
 
-	//ºËĞÄ´úÂë
+	//æ ¸å¿ƒä»£ç 
 	while (1)
 	{
-		lcdDrawPoint(10, 11, RED);
-		lcdDrawPoint(10, 12, BLACK);
 //		getSampclk(500000);
 //		fifo_sto();
 /*
@@ -93,13 +96,13 @@ int main() {
 	return 0;
 }
 
-/*****************************************³õÊ¼»¯²¿·Ö**************************************************/
+/*****************************************åˆå§‹åŒ–éƒ¨åˆ†**************************************************/
 
 void init(){
 	init_dis();
 
-	//´«ÊäÊı¾İ³õÊ¼»¯
-	//±êÖ¾Î»³õÊ¼»¯
+	//ä¼ è¾“æ•°æ®åˆå§‹åŒ–
+	//æ ‡å¿—ä½åˆå§‹åŒ–
 	init_flag();
 
 }
@@ -109,7 +112,7 @@ void init_dis(){
 	lcdDispNumtable(Num_X, Num_Y);
 //	lcdDrawRect(220, 28, 620, 348, BLACK);
 	lcdDrawGrid(220, 28, 8, 10, 40, DGRAY);
-	lcdDispStringSmall(Num_X+5, Num_Y+370, BLACK, WHITE, "V_Tri");
+	lcdDispStringSmall(Num_X+15, Num_Y+370, BLACK, WHITE, "V_Tri");
 
 	lcdDispStringSmall(230, 358, BLUE, WHITE, "Vpp");
 	lcdDispStringSmall(230, 378, BLUE, WHITE, "Fre");
@@ -123,28 +126,27 @@ void init_flag(){
 }
 
 /*************************************************************************************************
-*	·ù¶È²âÁ¿Ä£¿é
-*	·å·åÖµ¡¢×î´óÖµ¡¢×îĞ¡Öµ²âÁ¿:µ¥Î»mV
+*	å¹…åº¦æµ‹é‡æ¨¡å—---ç›´æµæ¨¡å¼å’Œäº¤æµæ¨¡å¼
+*	å³°å³°å€¼ã€æœ€å¤§å€¼ã€æœ€å°å€¼æµ‹é‡:å•ä½mV
 *************************************************************************************************/
 
 //Amplitude
-void Amp(int ifshow){	//ifshow =0:³õÊ¼»¯ÅĞ¶Ï£¬²»ÏÔÊ¾µçÆ½		=1:Êµ¼ÊÅĞ¶Ï£¬ÏÔÊ¾µçÆ½
-	while(!IORD(VPP_FOUND_BASE, 0));
-	rdv = IORD(VPP_BASE, 0);
-	rdmax = IORD(V_MAX_BASE, 0);
-	rdmin = IORD(V_MIN_BASE, 0);
-	rdac_zero = (rdmax+rdmin)/2;
+void Amp(int ifAmp){	//ifshow =0:åˆå§‹åŒ–åˆ¤æ–­ï¼Œä¸æ˜¾ç¤ºç”µå¹³		=1:å®é™…åˆ¤æ–­ï¼Œæ˜¾ç¤ºç”µå¹³
+	if(ifAmp){
+		while(!IORD(VPP_FOUND_BASE, 0));
+		rdv = IORD(VPP_BASE, 0);
+		vpp = getVpp(rdv);
+		disAmp(vpp, 0);//w=0-vpp; 1-vmax; 2-vmin
 
-	vpp = getVpp(rdv);
-	vmax = getVpp(rdmax-Vref);
-	vmin = getVpp(rdmin-Vref);
+		rdmax = IORD(V_MAX_BASE, 0);
+		rdmin = IORD(V_MIN_BASE, 0);
+		rdac_zero = (rdmax+rdmin)/2;
 
-	if(ifshow){
-		lcdRectClear(100, 100, 200, 200, WHITE);
-		lcdDispFloatSmall(100, 100, BLACK, WHITE, vpp);
+//		vmax = getVpp(rdmax-Vref);
+//		disAmp(vmax, 1);//w=0-vpp; 1-vmax; 2-vmin
+//		vmin = getVpp(rdmin-Vref);
+//		disAmp(vmin, 2);//w=0-vpp; 1-vmax; 2-vmin
 
-		lcdDispFloatSmall(100, 130, BLACK, WHITE, vmax);
-		lcdDispFloatSmall(100, 160, BLACK, WHITE, vmin);
 	}
 }
 
@@ -156,23 +158,49 @@ double getVpp(double vrd){
 	}
 	if(choosed){
 		vin = vin*Mult;
-//		switch(switch_mod){
-//		case 0: vin = vin*Mul3;
-//			break;
-//		case 1: vin = vin*Mul2;
-//			break;
-//		case 2: vin = vin*Mul1;
-//			break;
-//		default: vin = vin*Mul1;	break;
-//		}
 	}
 	return vin;
 }
 
+void disAmp(double v2wr, int w){//w=0-vpp; 1-vmax; 2-vmin
+	double v_dis;
+	int liangji = 0;	//0-mV;1-V
+	if(v2wr < 1000){
+		v_dis = v2wr;
+		liangji = 0;
+	}
+	else{
+		v_dis = v2wr/1000;
+		liangji = 1;
+	}
+
+	int y_s, y_e;
+	switch(w){
+	case 0:	y_s = 358; y_e = 375;
+		break;
+	case 1: y_s = 398; y_e = 415;
+		break;
+	case 2: y_s = 418; y_e = 435;
+		break;
+	default:break;
+	}
+	lcdRectClear(270, y_s, 350, y_e, WHITE);
+	lcdDispFloatSmall_4(270, y_s, BLACK, WHITE, v_dis);
+	switch(liangji){
+	case 0: lcdDispStringSmall(318, y_s, BLACK, WHITE, "mV");
+		break;
+	case 1: lcdDispStringSmall(318, y_s, BLACK, WHITE, "V");
+		break;
+	default: lcdDispStringSmall(318, y_s, BLACK, WHITE, "mV");
+		break;
+	}
+
+}
+
 /*************************************************************************************************
-*	ÆµÂÊ´¦ÀíÄ£¿é
-*	ÆµÂÊ²âÁ¿:µ¥Î»Hz			~~~ÆµÂÊ²âÁ¿Ä£¿éÊ±ÖÓÎª100M
-*	²ÉÑùÆµÂÊµÄÈ·¶¨			// Ã¿Ò»¸öÍ¼200¸öµã£º1000Hz~10MHz~200MHz
+*	é¢‘ç‡å¤„ç†æ¨¡å—
+*	é¢‘ç‡æµ‹é‡:å•ä½Hz			~~~é¢‘ç‡æµ‹é‡æ¨¡å—æ—¶é’Ÿä¸º100M
+*	é‡‡æ ·é¢‘ç‡çš„ç¡®å®š			// æ¯ä¸€ä¸ªå›¾200ä¸ªç‚¹ï¼š1000Hz~10MHz~200MHz
 *************************************************************************************************/
 
 double getFre(){
@@ -181,35 +209,19 @@ double getFre(){
 	clk_num = IORD(FMEASURE_CLK_BASE, 0);
 	sig_num = IORD(FMEASURE_SQR_BASE, 0);
 	printf("clk_num = %d, sig_num = %d\n",clk_num,sig_num);
-	if(clk_num){
+	if(clk_num)
 		fre_meas = sig_num*100000000.0/(clk_num);
-/*		if(sig_num < 22)
-			fre_meas = (sig_num*100000000/(clk_num));	//¾«È·µ½¸öÎ»[10~107]
-		else if(sig_num < 215)
-			fre_meas = (sig_num*10000000/(clk_num))*10;		//¾«È·µ½Ê®Î»[107~1.7k]
-		else if(sig_num < 2146)
-			fre_meas = (sig_num*1000000/(clk_num))*100;		//¾«È·µ½°ÙÎ»[1.7k~10.7k]
-		else if(sig_num < 21465)
-			fre_meas = (sig_num*100000/(clk_num))*1000;		//¾«È·µ½Ç§Î»[10.7k~107k]
-		else if(sig_num < 214650)
-			fre_meas = (sig_num*10000/(clk_num))*10000;		//¾«È·µ½Ê®Ç§Î»[107k~1.07M]
-		else
-			fre_meas = (sig_num*1000/(clk_num))*100000;		//¾«È·µ½°ÙÇ§Î»
-			*/
-	}
-	else{
+	else
 		fre_meas = 0;
-	}
+
 //	printf("***1***:%d\n***2***:%d\n***3***:%d\n",(sig_num*100000000/(clk_num)),(sig_num*10000000/(clk_num))*10,(sig_num*1000000/(clk_num))*100);
 //	printf("***4***:%d\n***5***:%d\n***6***:%d\n",(sig_num*100000/(clk_num))*1000,(sig_num*10000/(clk_num))*10000,(sig_num*1000/(clk_num))*100000);
-	printf("***1***:%f\n***2***:%f\n\n",(sig_num*100000000.0/(clk_num)),fre_meas);
+//	printf("***1***:%f\n***2***:%f\n\n",(sig_num*100000000.0/(clk_num)),fre_meas);
 
+	disFre(fre_meas);
 
-//	lcdRectClear(100, 100, 200, 200, WHITE);
-//	lcdDispFloatSmall(100, 100, BLACK, WHITE, fre_meas);
-//	lcdDispFloatSmall(100, 130, BLACK, WHITE, clk_num);
-//	lcdDispFloatSmall(100, 160, BLACK, WHITE, sig_num);
-	printf("Finish measuring fre.\n");
+	printf("clk_num = %d, sig_num = %d.\n",clk_num,sig_num);
+	printf("Finish measuring fre.\n\n");
 	return fre_meas;
 }
 
@@ -223,19 +235,16 @@ void getSampclk(float fre_now){
 		KW_word = pow(2,32)/400000;
 		Times = (50/fre_now)*40;
 	}
-	else if(fre_now<=500000){		//ÊµÊ±²ÉÑùÆµÂÊ  10M
+	else if(fre_now<=500000){		//å®æ—¶é‡‡æ ·é¢‘ç‡  10M
 		KW_word = pow(2,32)/40;
-//		Times = 400;
 		Times =(500000/fre_now)*40;
 //		printf("1-------Times = %d,fre = %f,KW_word = %d\n",Times,fre_now,KW_word);
 	}
-	else{		//µÈĞ§²ÉÑùÊ±ÖÓ200M--p130²îÅÄÊ±ÖÓË³ĞòµÈĞ§²ÉÑù·¨¡£
+	else{		//ç­‰æ•ˆé‡‡æ ·æ—¶é’Ÿ200M--p130å·®æ‹æ—¶é’Ÿé¡ºåºç­‰æ•ˆé‡‡æ ·æ³•ã€‚
 		KW_word = (1/(1/fre_now+0.5*pow(10,-8))*pow(2,32))/400000000;		//KW = (fre_out*pow(2,32))/400000000;
 		Times = 4*pow(10,8)/fre_now;
 //		printf("2-------Times = %d,fre = %f,KW_word = %d\n",Times,fre_now,KW_word);
 	}
-
-
 
 	IOWR(CLK_SAMPLE_KW_BASE, 0, KW_word);
 	IOWR(SAMPLE_TIME_BASE, 0, Times);
@@ -272,9 +281,9 @@ void disFre(double fre_now){
 }
 
 /****************************************************************
-*	²¨ĞÎ´¦Àí²¿·Ö
-*	²¨ĞÎ´æ´¢
-*	»ù±¾»æÍ¼
+*	æ³¢å½¢å¤„ç†éƒ¨åˆ†
+*	æ³¢å½¢å­˜å‚¨
+*	åŸºæœ¬ç»˜å›¾
 ****************************************************************/
 
 //Wave form Storage
@@ -284,7 +293,7 @@ void fifo_sto(void){
 	for(int i = 0; i < 100000; i++);
 	if(!storage_done)
 	{
-		if(signal_num < 4097)
+		if(signal_num < 513)
 		{
 			(signal_num)?1:(IOWR(WRD_FLAG_BASE,0,1));
 			sig1[signal_num] = IORD(FIFO_OUT_BASE,0);
@@ -301,9 +310,9 @@ void fifo_sto(void){
 	else
 	{
 		IOWR(WRD_FLAG_BASE,0,0);
-		for(int num = 0;num<8193;num++)
+		for(int num = 0;num<1025;num++)
 		{
-			(num == 8192)?1:(  storage_done = 0 );
+			(num == 1024)?1:(  storage_done = 0 );
 			clk_rd = ~clk_rd;
 			IOWR(CLK_RD_BASE,0,clk_rd);
 			for(int y = 0;y<10;y++);
@@ -314,57 +323,35 @@ void fifo_sto(void){
 	for(int i = 0;i < 20;i++);
 }
 
-void Paint_w(int ww,float fre_now){
-	//ww:which wave form:0~µ±Ç°²¨ĞÎ£»1~µ÷ÓÃ´æ´¢
-	//Ò»ÖÜÆÚµãÊı£ºTimes/2	//²¨ĞÎÊı£º10*xlable*fre
+void XYTrans(int ww,float fre_now){
+	//ww:which wave form:0~å½“å‰æ³¢å½¢ï¼›1~è°ƒç”¨å­˜å‚¨
+	//ä¸€å‘¨æœŸç‚¹æ•°ï¼šTimes/2	//æ³¢å½¢æ•°ï¼š10*xlable*fre
 	float xtrans[400], ytrans[400];
-	int dr_point_num;		//»­µÄµãÊı
-	int dr_sig_num;		//»­µÄÖÜÆÚÊı
+	int dr_point_num;		//ç”»çš„ç‚¹æ•°
+	int dr_sig_num;		//ç”»çš„å‘¨æœŸæ•°
 
 	if(x_mod == 0){	//100ns---200M
 		dr_sig_num = fre_now*pow(10,-6);
 		KW_word = (1/(1/fre_now+0.5*pow(10,-8))*pow(2,32))/400000000;		//KW = (fre_out*pow(2,32))/400000000;
 		Times = 4*pow(10,8)/fre_now;
-//		if(fre_now <= 50)	//	dr_sig_num = fre_now*Times*pow(10,-6)*0.5;
-//			dr_point_num = 2;//fre_now*Times*pow(10,-6)*0.5=2*pow(10,6)*pow(10,-6)*0.5
-//		else if(fre_now > 50 && fre_now <= 500000)
-//			dr_point_num = 10;
-//		else if(fre_now > 500000)
-			dr_point_num = 200;	//	dr_sig_num = clk_sample*xlable*10
+		dr_point_num = 200;	//	dr_sig_num = clk_sample*xlable*10
 	}
-	else if(x_mod == 1){	//2us---10M---ÀíÂÛÉÏÀ´ËµÒ²ÊÇµÈĞ§²ÉÑù ÀÁµÃ¸ÄÁË
+	else if(x_mod == 1){	//2us---10M---ç†è®ºä¸Šæ¥è¯´ä¹Ÿæ˜¯ç­‰æ•ˆé‡‡æ · æ‡’å¾—æ”¹äº†
 		dr_sig_num = fre_now*2*pow(10,-5);
 		KW_word = pow(2,32)/40;
 		Times =(500000/fre_now)*40;
-//		if(fre_now <= 50)	//	dr_sig_num = fre_now*Times*pow(10,-5);
-//			dr_point_num = 2;	//	ÕæÊµÖµĞ¡ÓÚ1
-//		else if(fre_now > 50 && fre_now <= 500000)
-			dr_point_num = 200;
-//		else if(fre_now > 500000)
-//			dr_point_num = 4000;
+		dr_point_num = 200;
 	}
-	else if(x_mod == 2){	//20ms--1000Hz²ÉÑùÆµÂÊ
+	else if(x_mod == 2){	//20ms--1000Hzé‡‡æ ·é¢‘ç‡
 		dr_sig_num = fre_now*0.2;
-//		if(fre_now <= 1000){
-			KW_word = pow(2,32)/400000;
-			Times = (50/fre_now)*40;
-			dr_point_num = 200;
-//		}
-//		else{
-
-//		}
-//		if(fre_now <= 50)	//	dr_sig_num = fre_now*Times*0.1;
-//			dr_point_num = 200;
-//		else if(fre_now > 50 && fre_now <= 500000)
-//			dr_point_num = 2000000;
-//		else if(fre_now > 500000)
-//			dr_point_num = 40000000;
+		KW_word = pow(2,32)/400000;
+		Times = (50/fre_now)*40;
+		dr_point_num = 200;
 	}
-
 	IOWR(CLK_SAMPLE_KW_BASE, 0, KW_word);
 	IOWR(SAMPLE_TIME_BASE, 0, Times);
 
-	for(int i = 0;i < 4097; i++){
+	for(int i = 0;i < 200; i++){
 		sig1_real[i] = getVpp(sig1[i]-rdac_zero);
 	}
 	if(dr_point_num < 401){
@@ -432,22 +419,39 @@ void Paint_w(int ww,float fre_now){
 
 	}
 /*
-	if(ww){//´æ´¢--Sig2
+	if(ww){//å­˜å‚¨--Sig2
 		for(int i = 0;i<dr_sig_num;i++){
 			lcdDrawLine(xtrans[i], ytrans[i], xtrans[i+1], ytrans[i+1], BLACK);
 		}
 	}
-	else{//ÊµÊ±--Sig1
+	else{//å®æ—¶--Sig1
 
 	}
 	*/
 }
 
+void Storage(int ifStore){
+	if(ifStore){
+		for(int i = 0; i< 200; i++){
+			sig_real2[i] = getVpp(sig1[i]);
+		}
+		vpp2 = vpp;
+		vmax2 = vmax;
+		vmin2 = vmin;
+		fre_meas2 = fre_meas;
+
+		ifStore = 0;
+	}
+}
+
+void Auto(int ifAuto){
+
+}
 /***********************************************************************************
-*	Switch µµÎ»Ñ¡Ôñ
-*	0 | 0mV~25mV  :x100		117.33		~~~~/100		| ÀíÂÛÅĞ¶ÏÖµ£º0~2500		|	0~2933.25
-*	1 | 25mV~500mV:x5		5.6		~~~~/5				| ÀíÂÛÅĞ¶ÏÖµ£º125~2500	|	140~2800
-*	2 | 500mV~8V  :x1/3		1/3.917		~~~~*3			| ÀíÂÛÅĞ¶ÏÖµ£º167~2667	|	127~2042
+*	Switch æ¡£ä½é€‰æ‹©
+*	0 | 0mV~25mV  :x100		117.33		~~~~/100		| ç†è®ºåˆ¤æ–­å€¼ï¼š0~2500		|	0~2933.25
+*	1 | 25mV~500mV:x5		5.6		~~~~/5				| ç†è®ºåˆ¤æ–­å€¼ï¼š125~2500	|	140~2800
+*	2 | 500mV~8V  :x1/3		1/3.917		~~~~*3			| ç†è®ºåˆ¤æ–­å€¼ï¼š167~2667	|	127~2042
 ***********************************************************************************/
 
 void setSwitch(){
@@ -455,11 +459,14 @@ void setSwitch(){
 	IOWR(SAMPLE_TIME_BASE, 0, Times_init);
 
 	u16 rdv = 0;
+	double vpp_init;
 	while(!IORD(VPP_FOUND_BASE, 0));
 	rdv = IORD(VPP_BASE, 0);
+	vpp_init = getVpp(rdv);
 
-	IOWR(SWITCH_MOD_BASE, 0, 2);	//Ë¥¼õ3
-	if(!choosed && (vpp > 126)){
+
+	IOWR(SWITCH_MOD_BASE, 0, 2);	//è¡°å‡3
+	if(!choosed && (vpp_init > 126)){
 		switch_mod = 2;
 		Mult = Mul1;
 		choosed = 1;
@@ -467,15 +474,15 @@ void setSwitch(){
 		printf("switch_mode == 2\n");
 	}
 	else if(!choosed){
-		IOWR(SWITCH_MOD_BASE, 0, 1);	//·Å´ó5
-		if(!choosed && (vpp > 139)){
+		IOWR(SWITCH_MOD_BASE, 0, 1);	//æ”¾å¤§5
+		if(!choosed && (vpp_init > 139)){
 			switch_mod = 1;
 			Mult = Mul2;
 			choosed = 1;
 			printf("switch_mode == 1\n");
 		}
 		else{
-			IOWR(SWITCH_MOD_BASE, 0, 0);	//·Å´ó100
+			IOWR(SWITCH_MOD_BASE, 0, 0);	//æ”¾å¤§100
 			switch_mod = 0;
 			Mult = Mul3;
 			choosed = 1;
