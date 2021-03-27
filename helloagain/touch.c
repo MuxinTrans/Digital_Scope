@@ -13,10 +13,11 @@
 extern int Num_X = 30, Num_Y = 20;
 extern int flag = 0;
 extern int x_mod = 2, y_mod = 2;		// xmod:0-100ns	1-2us 2-20ms	ymod:0-2mV 1-0.1V 2-1V
+extern double trigger_v = 0;
 
 int bit_array[bit_length] = {0};
-int bit_pointer = 0;
-int Range_w = 0;//ÓÃÀ´±íÕ÷ÐÞ¸Ä¼¸¸ö²»Í¬Î»ÖÃµÄÊý×ÖµÄÖµ
+int bit_pointer = 0,pointer_flag = 0, pointer_pointer = 0, full_pointer = 0;
+int Range_w = 0;//ç”¨æ¥è¡¨å¾ä¿®æ”¹å‡ ä¸ªä¸åŒä½ç½®çš„æ•°å­—çš„å€¼
 double num_output = 0;
 int mode = 1;
 
@@ -47,7 +48,7 @@ int touchIrqInit(void) {
 
 tcdata local = { .id = 1, .status = TOUCH_NONE, };
 
-int touchResponse(int x_low, int x_high, int y_low, int y_high, int page) {//°´¼üÏìÓ¦º¯Êý£¬°´ÏÂ±äÉ«
+int touchResponse(int x_low, int x_high, int y_low, int y_high, int page) {//æŒ‰é”®å“åº”å‡½æ•°ï¼ŒæŒ‰ä¸‹å˜è‰²
 	if((local.now.x > x_low) && (local.now.x < x_high) && (local.now.y > y_low) && (local.now.y < y_high) && (local.status == 0))
 	{
 		lcdRectClear(x_low, y_low, x_high,y_high, DGRAY);
@@ -76,37 +77,43 @@ void touchIsr(void* isr_context) {
 }
 
 void Change_value(int num_in){
-	if((bit_pointer == 0) && (Range_w)){
-		lcdRectClear(126, 425, 198, 437, BACKGROUND);
-	}
-	else if((bit_pointer == 0) && (!Range_w)){
-		lcdRectClear(126, 385, 198, 397, BACKGROUND);
+//	if((bit_pointer == 0) && (Range_w)){
+//		lcdRectClear(126, 425, 198, 437, BACKGROUND);
+//	}
+//	else if((bit_pointer == 0) && (!Range_w)){
+//		lcdRectClear(126, 385, 198, 397, BACKGROUND);
+//	}
+
+	if((bit_pointer == 0) && (!pointer_flag)){
+		lcdRectClear(Num_X+80, Num_Y+370, Num_X+300, Num_Y+385, BACKGROUND);
 	}
 
 	if(bit_pointer <= bit_length-1)
 	{
 		bit_pointer++;
 		bit_array[bit_pointer]=num_in;
-		if(Range_w)
-			lcdDispDecSmall(120+(bit_pointer*9), 425, BLACK, WHITE, bit_array[bit_pointer]);
-		else
-			lcdDispDecSmall(120+(bit_pointer*9), 385, BLACK, WHITE, bit_array[bit_pointer]);
+//		printf("The space of num:%d, bit_pointer = %d\n",100+(bit_pointer+pointer_flag)*9,bit_pointer);
+		lcdDispDecSmall(100+(bit_pointer+pointer_flag)*9, Num_Y+370, RED, WHITE, bit_array[bit_pointer]);
+//		if(Range_w)
+//			lcdDispDecSmall(120+(bit_pointer*9+pointer_flag), 425, BLACK, WHITE, bit_array[bit_pointer]);
+//		else
+//			lcdDispDecSmall(120+(bit_pointer*9+pointer_flag), 385, BLACK, WHITE, bit_array[bit_pointer]);
 	}
 }
 
 void button_table(int page){
 //	if(touchResponse(10, 760, 10, 470, page) == 1)
 //	{
-//		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+//		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 //		flag = 1;
-//		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+//		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 //	}
 	/****************** -1- *********************/
 	if(touchResponse(Num_X, Num_X+50, Num_Y, Num_Y+50, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(1);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+50, Num_Y, Num_Y+50, page) == 0)
 	{
@@ -115,9 +122,9 @@ void button_table(int page){
 	/****************** -2- *********************/
 	if(touchResponse(Num_X+50, Num_X+100, Num_Y, Num_Y+50, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(2);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+50, Num_X+100, Num_Y, Num_Y+50, page) == 0)
 	{
@@ -127,9 +134,9 @@ void button_table(int page){
 	/****************** -3- *********************/
 	if(touchResponse(Num_X+100, Num_X+150, Num_Y, Num_Y+50, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(3);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+100, Num_X+150, Num_Y, Num_Y+50, page) == 0)
 	{
@@ -139,9 +146,9 @@ void button_table(int page){
 	/****************** -4- *********************/
 	if(touchResponse(Num_X, Num_X+50, Num_Y+50, Num_Y+100, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(4);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+50, Num_Y+50, Num_Y+100, page) == 0)
 	{
@@ -151,9 +158,9 @@ void button_table(int page){
 	/****************** -5- *********************/
 	if(touchResponse(Num_X+50, Num_X+100, Num_Y+50, Num_Y+100, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(5);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+50, Num_X+100, Num_Y+50, Num_Y+100, page) == 0)
 	{
@@ -163,9 +170,9 @@ void button_table(int page){
 	/****************** -6- *********************/
 	if(touchResponse(Num_X+100, Num_X+150, Num_Y+50, Num_Y+100, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(6);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+100, Num_X+150, Num_Y+50, Num_Y+100, page) == 0)
 	{
@@ -175,9 +182,9 @@ void button_table(int page){
 	/****************** -7- *********************/
 	if(touchResponse(Num_X, Num_X+50, Num_Y+100, Num_Y+150, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(7);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+50, Num_Y+100, Num_Y+150, page) == 0)
 	{
@@ -187,9 +194,9 @@ void button_table(int page){
 	/****************** -8- *********************/
 	if(touchResponse(Num_X+50, Num_X+100, Num_Y+100, Num_Y+150, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(8);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+50, Num_X+100, Num_Y+100, Num_Y+150, page) == 0)
 	{
@@ -199,9 +206,9 @@ void button_table(int page){
 	/****************** -9- *********************/
 	if(touchResponse(Num_X+100, Num_X+150, Num_Y+100, Num_Y+150, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(9);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+100, Num_X+150, Num_Y+100, Num_Y+150, page) == 0)
 	{
@@ -211,44 +218,29 @@ void button_table(int page){
 	/****************** -.- *********************/
 	if(touchResponse(Num_X, Num_X+50, Num_Y+150, Num_Y+200, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
-		for(int i=1; i <= bit_pointer; i++)
-		{
-			num_output = num_output+bit_array[i]*pow(10,bit_pointer-i);
-			bit_array[i]=0;
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
+		if((bit_pointer == 0) && (!pointer_flag)){
+			lcdRectClear(Num_X+80, Num_Y+370, Num_X+300, Num_Y+385, BACKGROUND);
 		}
-		bit_pointer = 0;
-		if(Range_w){
-			if(num_output > 10000000){
-				num_output = 10000000;
-				lcdRectClear(126, 425, 198, 437, BACKGROUND);
-				lcdDispDecSmall(129, 425, BLACK, WHITE, num_output);
-			}
-//			Range_up_data = num_output;
-			num_output = 0;
-		}
-		else{
-			if(num_output < 100){
-				num_output = 100;
-				lcdRectClear(126, 385, 198, 397, BACKGROUND);
-				lcdDispDecSmall(129, 385, BLACK, WHITE, num_output);
-			}
-//			Range_down_data = num_output;
-			num_output = 0;
-		}
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+
+		pointer_pointer = bit_pointer;
+		pointer_flag = 1;
+//		printf("pointer_push!\n");
+//		printf("The space of .:%d\n",100+(bit_pointer+pointer_flag)*9);
+		lcdDispStringSmall(100+(bit_pointer+pointer_flag)*9, Num_Y+370, RED, WHITE, ".");
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+50, Num_Y+150, Num_Y+200, page)==0)
 	{
-		lcddrawsqur(Num_X, Num_X+50, Num_Y+150, Num_Y+200, BLACK, " .");
+		lcddrawsqur(Num_X, Num_X+50, Num_Y+150, Num_Y+200, BLACK, "  .");
 	}
 
 	/****************** -0- **********************/
 	if(touchResponse(Num_X+50, Num_X+100, Num_Y+150, Num_Y+200, page) == 1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		Change_value(0);
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+50, Num_X+100, Num_Y+150, Num_Y+200, page) == 0)
 	{
@@ -258,17 +250,15 @@ void button_table(int page){
 	/***************** -clc- *********************/
 	if(touchResponse(Num_X+100, Num_X+150, Num_Y+150, Num_Y+200, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		for(int i = 0; i <= bit_pointer; i++)
 		{
 			bit_array[i] = 0;
 		}
-		if(Range_w)
-			lcdRectClear(126, 425, 198, 437, BACKGROUND);
-		else
-			lcdRectClear(126, 385, 198, 397, BACKGROUND);
+		lcdRectClear(Num_X+75, Num_Y+370, Num_X+300, Num_Y+385, BACKGROUND);
 		bit_pointer = 0;
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		pointer_flag = 0;
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+100, Num_X+150, Num_Y+150, Num_Y+200, page) == 0)
 	{
@@ -278,9 +268,9 @@ void button_table(int page){
 	/***************** -Save- ********************/
 	if(touchResponse(Num_X, Num_X+75, Num_Y+250, Num_Y+290, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+75, Num_Y+250, Num_Y+290, page) == 0)
 	{
@@ -290,16 +280,16 @@ void button_table(int page){
 	/***************** -Call- *********************/
 	if(touchResponse(Num_X+75, Num_X+150, Num_Y+250, Num_Y+290, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		if(Range_w == 1){
-			Range_w = 0;//ÐÞ¸ÄF_LµÄÖµ
+			Range_w = 0;//ä¿®æ”¹F_Lçš„å€¼
 			for(int i = 0; i <= bit_pointer; i++)
 			{
 				bit_array[i] = 0;
 			}
 			bit_pointer = 0;
 		}
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+75, Num_X+150, Num_Y+250, Num_Y+290, page) == 0)
 	{
@@ -309,16 +299,16 @@ void button_table(int page){
 	/***************** -Single- *********************/
 	if(touchResponse(Num_X+75, Num_X+150, Num_Y+210, Num_Y+250, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		if(!Range_w){
-			Range_w = 1;//ÐÞ¸ÄF_H
+			Range_w = 1;//ä¿®æ”¹F_H
 			for(int i = 0; i <= bit_pointer; i++)
 			{
 				bit_array[i] = 0;
 			}
 			bit_pointer = 0;
 		}
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X+75, Num_X+150, Num_Y+210, Num_Y+250, page) == 0)
 	{
@@ -328,32 +318,24 @@ void button_table(int page){
 	/****************** -SetTri- *********************/
 	if(touchResponse(Num_X, Num_X+75, Num_Y+210, Num_Y+250, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
-		for(int i=1; i <= bit_pointer; i++)
-		{
-			num_output = num_output+bit_array[i]*pow(10,bit_pointer-i);
-			bit_array[i]=0;
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
+		full_pointer = bit_pointer;
+		for(int i = 1; i <= bit_pointer; i++){
+			num_output = (num_output+bit_array[i]*pow(10.0,full_pointer-i));
+			bit_array[i] = 0;
 		}
 		bit_pointer = 0;
-		if(Range_w){
-			if(num_output > 10000000){
-				num_output = 10000000;
-				lcdRectClear(126, 425, 198, 437, BACKGROUND);
-				lcdDispDecSmall(129, 425, BLACK, WHITE, num_output);
-			}
-//			Range_up_data = num_output;
-			num_output = 0;
+		if(pointer_flag == 1){
+			num_output = num_output/pow(10, full_pointer-pointer_pointer);
 		}
-		else{
-			if(num_output < 100){
-				num_output = 100;
-				lcdRectClear(126, 385, 198, 397, BACKGROUND);
-				lcdDispDecSmall(129, 385, BLACK, WHITE, num_output);
-			}
-//			Range_down_data = num_output;
-			num_output = 0;
-		}
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+//		printf("num_output = %f\n",num_output);
+
+		trigger_v = num_output;
+		num_output = 0;
+
+		pointer_pointer = 0;
+		pointer_flag = 0;
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+75, Num_Y+210, Num_Y+250, page)==0)
 	{
@@ -363,7 +345,7 @@ void button_table(int page){
 	/***************** -Xlable- *********************/
 	if(touchResponse(Num_X, Num_X+70, Num_Y+300, Num_Y+330, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		if(x_mod == 0){
 			x_mod = 1;
 			lcdRectClear(Num_X+75, Num_Y+305, Num_X+150, Num_Y+328, WHITE);
@@ -379,7 +361,7 @@ void button_table(int page){
 			lcdRectClear(Num_X+75, Num_Y+305, Num_X+150, Num_Y+328, WHITE);
 			lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "100ns");
 		}
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+70, Num_Y+300, Num_Y+330, page) == 0)
 	{
@@ -388,7 +370,7 @@ void button_table(int page){
 	/***************** -Ylable- *********************/
 	if(touchResponse(Num_X, Num_X+70, Num_Y+330, Num_Y+360, page)==1)
 	{
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªBegin*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”Begin*/
 		if(y_mod == 0){
 			y_mod = 1;
 			lcdRectClear(Num_X+75, Num_Y+335, Num_X+150, Num_Y+358, WHITE);
@@ -404,7 +386,7 @@ void button_table(int page){
 			lcdRectClear(Num_X+75, Num_Y+335, Num_X+150, Num_Y+358, WHITE);
 			lcdDispStringSmall(Num_X+80, Num_Y+338, RED, WHITE, "2mV");
 		}
-		/*°´¼ü¹¦ÄÜ¶¨ÒåÇø¡ª¡ªEnd*/
+		/*æŒ‰é”®åŠŸèƒ½å®šä¹‰åŒºâ€”â€”End*/
 	}
 	else if(touchResponse(Num_X, Num_X+70, Num_Y+330, Num_Y+360, page) == 0)
 	{
