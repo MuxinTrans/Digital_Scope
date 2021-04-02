@@ -19,8 +19,9 @@ extern int model;
 extern int pause1;
 
 extern int Num_X, Num_Y;
-extern int flag;
+extern int flag, ifAuto, ifCall, ifStore, ifSingle, ifRun, huifu, clearscr;
 extern int x_mod, y_mod;
+extern double trigger_v, trigger_v_ed;
 
 enum FT_REG {
 	FT_DEV_MODE = 0x00,
