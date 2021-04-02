@@ -13,8 +13,8 @@
 extern int Num_X = 30, Num_Y = 20;
 extern int flag = 0;//用来实现单次测量
 extern int x_mod = 2, y_mod = 2;		// xmod:0-100ns	1-2us 2-20ms	ymod:0-2mV 1-0.1V 2-1V
-extern double trigger_v = 0;
-extern int ifAuto = 1, ifCall = 0, ifStore = 0, ifSingle = 0;
+extern double trigger_v = 0, trigger_v_ed = 0;
+extern int ifAuto = 1, ifCall = 0, ifStore = 0, ifSingle = 0, ifRun = 1, huifu = 0, clearscr = 0;
 
 int bit_array[bit_length] = {0};
 int bit_pointer = 0,pointer_flag = 0, pointer_pointer = 0, full_pointer = 0;
@@ -271,6 +271,7 @@ void button_table(int page){
 	{
 		/*按键功能定义区——Begin*/
 		ifStore = 1;
+		ifRun = 1;
 		/*按键功能定义区——End*/
 	}
 	else if(touchResponse(Num_X, Num_X+75, Num_Y+250, Num_Y+290, page) == 0)
@@ -283,13 +284,18 @@ void button_table(int page){
 	{
 		/*按键功能定义区——Begin*/
 		ifAuto = 0;
+		ifRun = 1;
 		if(ifCall == 0){
 			ifCall = 1;		//显示波形
+			clearscr = 1;
+			huifu = 0;
 		}
 		else{
 			ifCall = 0;		//清除波形
+			clearscr = 0;
+			huifu = 1;
 		}
-//		printf("ifCall = %d\n",ifCall);
+		printf("ifCall = %d, clearscr = %d.\n",ifCall,clearscr);
 		/*按键功能定义区——End*/
 	}
 	else if(touchResponse(Num_X+75, Num_X+150, Num_Y+250, Num_Y+290, page) == 0)
@@ -304,10 +310,14 @@ void button_table(int page){
 	if(touchResponse(Num_X+75, Num_X+150, Num_Y+210, Num_Y+250, page)==1)
 	{
 		/*按键功能定义区——Begin*/
-		if(ifSingle == 0)
+		if(ifSingle == 0){
 			ifSingle = 1;	//单次采样模式
-		else
+			ifRun = 1;
+		}
+		else if(ifSingle == 1){
 			ifSingle = 0;	//非单次采样模式
+			ifRun = 1;
+		}
 		printf("ifSingle = %d.\n",ifSingle);
 		/*按键功能定义区——End*/
 	}
@@ -335,6 +345,38 @@ void button_table(int page){
 //		printf("num_output = %f\n",num_output);
 
 		trigger_v = num_output;
+		
+		int n;
+		if(y_mod == 0){
+			n = 0.008;
+			if(trigger_v > 0.008)
+			{
+				trigger_v = 0.008;
+				lcdRectClear(Num_X+78, Num_Y+370, Num_X+300, Num_Y+385, BACKGROUND);
+				lcdDispStringSmall(Num_X+80, Num_Y+370, RED, WHITE, "0.008");
+			}
+		}
+		else if(y_mod == 1){
+			n = 0.4;
+			if(trigger_v > 0.4)
+			{
+				trigger_v = 0.4;
+				lcdRectClear(Num_X+78, Num_Y+370, Num_X+300, Num_Y+385, BACKGROUND);
+				lcdDispStringSmall(Num_X+80, Num_Y+370, RED, WHITE, "0.4");
+			}
+		}
+		else if(y_mod == 2){
+			n = 4;
+			if(trigger_v > 4){
+				trigger_v = 4;
+				lcdRectClear(Num_X+78, Num_Y+370, Num_X+300, Num_Y+385, BACKGROUND);
+				lcdDispStringSmall(Num_X+80, Num_Y+370, RED, WHITE, "4");
+			}
+		}
+		
+		lcdDrawLine(220, 188-320*trigger_v_ed/n, 620, 188-320*trigger_v_ed/n, WHITE);
+		lcdDrawLine(220, 188-320*trigger_v/n, 620, 188-320*trigger_v/n, BLUE);
+		trigger_v_ed = trigger_v;
 		num_output = 0;
 
 		pointer_pointer = 0;
@@ -357,6 +399,11 @@ void button_table(int page){
 			lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "2us");
 		}
 		else if(x_mod == 1){
+			x_mod = 3;
+			lcdRectClear(Num_X+75, Num_Y+305, Num_X+150, Num_Y+328, WHITE);
+			lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "20us");
+		}
+		else if(x_mod == 3){
 			x_mod = 2;
 			lcdRectClear(Num_X+75, Num_Y+305, Num_X+150, Num_Y+328, WHITE);
 			lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "20ms");
@@ -366,6 +413,7 @@ void button_table(int page){
 			lcdRectClear(Num_X+75, Num_Y+305, Num_X+150, Num_Y+328, WHITE);
 			lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "100ns");
 		}
+		printf("x_mod = %d.\n",x_mod);
 		/*按键功能定义区——End*/
 	}
 	else if(touchResponse(Num_X, Num_X+70, Num_Y+300, Num_Y+330, page) == 0)
@@ -404,6 +452,7 @@ void button_table(int page){
 	{
 		/*按键功能定义区——Begin*/
 		ifAuto = 1;
+		ifRun = 1;
 		/*按键功能定义区——End*/
 	}
 	else if(touchResponse(Num_X, Num_X+75, Num_Y+390, Num_Y+430, page) == 0)
