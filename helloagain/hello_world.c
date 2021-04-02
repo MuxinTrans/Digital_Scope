@@ -23,7 +23,7 @@
 #define Mul1 3.917
 #define Mul2 1/5.6
 #define Mul3 1/117.33
-// switch_mod =2--Mul1; =1--Mul2; =0--Mul3;
+// switch_mod =0--Mul1--衰减; =1--Mul2--5; =2--Mul3--100;
 
 double vpp, vmax, vmin, fre_meas, vac_zero;
 double vpp2, vmax2, vmin2, fre_meas2, vac_zero2;
@@ -39,8 +39,8 @@ double trig_show, trig_cachu;
 //flag
 int clk_rd, storage_done;	//0未1已
 int KW_init = pow(2,32)/401, Times_init = 100100;
-int switch_mod = 2;
-int ifChoosed = 1;
+int switch_mod = 0;
+int ifChoosed = 0, trigged = 0, nosig = 0;
 
 void init();
 void init_dis();
@@ -80,14 +80,18 @@ int main() {
 	//核心代码
 	while (1)
 	{
+		while(!ifRun);
+//		printf("////////////////Begin to while/////////////////////\n");
 		/*********************Switch档位选择--Begin********************************/
 		setSwitch();
-
+//		printf("ifChoosed = %d.\n",ifChoosed);
 		if(ifChoosed){
+//			printf("Begin to check the switch.Switch_mod = %d.Times = %d.\n",switch_mod,Times);
 			double vpp_init;
 			while(!IORD(VPP_FOUND_BASE, 0));
 			vpp_init = getVpp(IORD(VPP_BASE, 0),Mult);
-			if(switch_mod == 0){						//--100
+//			printf("vpp_init = %f.\n",vpp_init);
+			if(switch_mod == 2){						//--100
 				if(vpp_init > 4000){
 					/////////////////上限值要修改！！！
 					IOWR(SWITCH_MOD_BASE, 0, 1);		//--5
@@ -100,8 +104,8 @@ int main() {
 						ifChoosed = 1;
 					}
 					else if(vpp >= 4000){				//--1/3
-						IOWR(SWITCH_MOD_BASE, 0, 2);
-						switch_mod = 2;
+						IOWR(SWITCH_MOD_BASE, 0, 0);
+						switch_mod = 0;
 						Mult = Mul1;
 						ifChoosed = 1;
 					}
@@ -110,25 +114,22 @@ int main() {
 			else if(switch_mod == 1){					//--5
 				if(vpp_init > 4000){
 					/////////////////上限值要修改！！！
-					IOWR(SWITCH_MOD_BASE, 0, 2);		//--1/3
+					IOWR(SWITCH_MOD_BASE, 0, 0);		//--1/3
 					for(int i = 0; i<100000; i++);
 					while(!IORD(VPP_FOUND_BASE, 0));
 					vpp_init = getVpp(IORD(VPP_BASE, 0),Mul1);
-					switch_mod = 2;
+					switch_mod = 0;
 					Mult = Mul1;
 					ifChoosed = 1;
 				}
 				else if(vpp_init < 140){
-					IOWR(SWITCH_MOD_BASE, 0, 0);		//--100
-					for(int i = 0; i<100000; i++);
-					while(!IORD(VPP_FOUND_BASE, 0));
-					vpp_init = getVpp(IORD(VPP_BASE, 0),Mul3);
-					switch_mod = 0;
+					IOWR(SWITCH_MOD_BASE, 0, 2);		//--100
+					switch_mod = 2;
 					Mult = Mul3;
 					ifChoosed = 1;
 				}
 			}
-			else if(switch_mod == 2){					//--1/3
+			else if(switch_mod == 0){					//--1/3
 				if(vpp_init < 127){
 					IOWR(SWITCH_MOD_BASE, 0, 1);
 					for(int i = 0; i<100000; i++);
@@ -137,52 +138,82 @@ int main() {
 					if(vpp_init > 139){					//--5
 						switch_mod = 1;
 						Mult = Mul2;
+						ifChoosed = 1;
 					}
 					else{
-						IOWR(SWITCH_MOD_BASE, 0, 0);	//--100
-						switch_mod = 0;
+						IOWR(SWITCH_MOD_BASE, 0, 2);	//--100
+						switch_mod = 2;
 						Mult = Mul3;
+						ifChoosed = 1;
 					}
 				}
 			}
+//			printf("End to Choosed switch. ifChoosed = %d.\n",ifChoosed);
 		}
 
 		ifChoosed = (ifChoosed+1)%20;
 
 		/*********************Switch档位选择--End********************************/
 
-		fre_meas = getFre();
-		disFre(fre_meas);		//fre_meas
-		Amp();					//vpp | rdv | rdmax | rdmin
+		if(!ifCall){
+			fre_meas = getFre();	//包含显示功能
+			Amp();					//vpp | rdv | rdmax | rdmin
+			printf("switch_mod = %d. vpp_rd = %d,Vpp_meas = %f.\n",switch_mod, rdv,vpp);
+		}
 
-		Auto(ifAuto);
+		if((!ifCall)&&(!ifSingle))
+			Auto();
 		/*********************手动调波--Begin**************************************/
-/*		if((!ifAuto)&&(!ifSingle)){
+		if((!ifAuto)&&(!ifSingle)&&(!ifCall)){
+//			printf("-------------------------手动调波-------------------------\n");
 			XTrans(fre_meas);
+			for(int i = 0; i < 100000; i++);
 			fifo_rd();
 			YTrans();
 
 			int tri_num;
-			for(int i = 2; i < 400; i++){
-				if((sig1_real[i]>=trigger_v) && (sig1_real[i-2]<trigger_v) && (sig1_real[i-1]<trigger_v)){
-					tri_num = i;
-					printf("tri_num = %d.\n",tri_num);
-					break;
+			if(trigged == 0){
+				for(int i = 2; i < 400; i++){
+					if((sig1_real[i-1]>=(trigger_v*1000)) && (sig1_real[i-2]<(trigger_v*1000)) && (sig1_real[i-1]>sig1_real[i-2])){
+						tri_num = i-1;
+						printf("MODE=1: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num-1,sig1_real[tri_num-1],tri_num,sig1_real[tri_num]);
+						printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+						if(tri_num < 201)
+							trigged = 1;
+						break;
+					}
+/*					else if((sig1_real[i]>=(trigger_v*1000)) && (sig1_real[i-2]>=(trigger_v*1000)) && (sig1_real[i-1]>=(trigger_v*1000))&&(sig1_real[i-1]==sig1_real[i-2])&&(sig1_real[i-1]==sig1_real[i])){
+						tri_num = i-2;
+//						printf("tri_num = %d.\n",tri_num);
+						printf("MODE=2: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num+1,sig1_real[tri_num+1],tri_num,sig1_real[tri_num]);
+						printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+						if(tri_num < 201)
+							trigged = 1;
+						break;
+					}
+					*/
 				}
 			}
-			for(int i = tri_num; i < tri_num+200; i++){
-				lcdDrawLine((i-tri_num)*2+220, ycachu[i], (i-tri_num)*2+222, ycachu[i+1], WHITE);
-				lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], BLACK);
+
+			if(trigged == 1){
+				for(int i = tri_num; i < tri_num+200; i++){
+					lcdDrawLine((i-tri_num)*2+220, ycachu[i-tri_num], (i-tri_num)*2+222, ycachu[i+1-tri_num], WHITE);
+					lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], RED);
+//					printf("X_before[%d] = %d; Y_before[%d] = %d.\n\n",i-tri_num,(i-tri_num)*2+220,i-tri_num,ytrans[i]);
+				}
+				for(int i = tri_num; i < tri_num+200; i++){
+					ycachu[i-tri_num] = ytrans[i];
+				}
+				trigged = 0;
 			}
 
 		}//手动调波最后的括号
+
+//		printf("Finish show wave!\n");
 		/*********************手动调波--End**************************************/
-//		Single();
-
-		if(flag == 1){
-
-			flag = 0;
-		}
+		Single();
+		Storage();
+		Recall();
 	}//while的括号
 
 	return 0;
@@ -194,6 +225,15 @@ void init(){
 	init_dis();
 	//传输数据初始化 | 标志位初始化
 	init_flag();
+	
+	trigger_v = 0;
+	trigger_v_ed = 0;
+	lcdDrawLine(220, 188-320*trigger_v_ed/4, 620, 188-320*trigger_v_ed/4, WHITE);
+	lcdDrawLine(220, 188-320*trigger_v/4, 620, 188-320*trigger_v/4, BLUE);
+	printf("trigger_v = %f\n",188-320*trigger_v/4);
+
+//	lcdDrawLine(220, trigger_v_ed, 620, trigger_v_ed, WHITE);
+//	lcdDrawLine(220, trigger_v, 620, trigger_v, BLUE);
 }
 
 void init_dis(){
@@ -201,7 +241,7 @@ void init_dis(){
 	lcdDispNumtable(Num_X, Num_Y);
 //	lcdDrawRect(220, 28, 620, 348, BLACK);
 	lcdDrawGrid(220, 28, 8, 10, 40, DGRAY);
-	lcdDispStringSmall(Num_X+15, Num_Y+370, BLACK, WHITE, "V_Tri");
+	lcdDispStringSmall(Num_X+5, Num_Y+370, BLACK, WHITE, "V_Tri/V");
 
 	lcdDispStringSmall(230, 358, BLUE, WHITE, "Vpp");
 	lcdDispStringSmall(230, 378, BLUE, WHITE, "Fre");
@@ -210,8 +250,13 @@ void init_dis(){
 }
 
 void init_flag(){
+	ifAuto = 1;
+	ifCall = 0;
+	ifSingle = 0;
+	trigged = 0;
 	IOWR(CLK_SAMPLE_KW_BASE, 0, KW_init);
 	IOWR(SAMPLE_TIME_BASE, 0, Times_init);
+	IOWR(SWITCH_MOD_BASE, 0, 0);
 }
 
 /*************************************************************************************************
@@ -231,6 +276,8 @@ void Amp(){	//ifshow =0:初始化判断，不显示电平		=1:实际判断，显
 	rdmax = IORD(V_MAX_BASE, 0);
 	rdmin = IORD(V_MIN_BASE, 0);
 	rdac_zero = (rdmax+rdmin)/2;
+
+//	printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d\n",rdv,rdmax,rdmin,rdac_zero);//无数据输入时rdmax=rdmin=4095?
 
 //	vmax = getVpp(rdmax-Vref);
 //	disAmp(vmax, 1);//w=0-vpp; 1-vmax; 2-vmin
@@ -289,14 +336,15 @@ void disAmp(double v2wr, int w){//w=0-vpp; 1-vmax; 2-vmin
 *	频率测量:单位Hz			~~~频率测量模块时钟为100M
 *	采样频率的确定			// 每一个图200个点：1000Hz~10MHz~200MHz
 *	频率测量的显示			保留4位有效数字	Hz|kHz|MHz
+*	注意：频率测量时要用浮点数，不然测量值会溢出。
 *************************************************************************************************/
 
 double getFre(){
-	printf("Begin to measure fre.\n");
+//	printf("Begin to measure fre.\n");
 	int clk_num, sig_num;
 	clk_num = IORD(FMEASURE_CLK_BASE, 0);
 	sig_num = IORD(FMEASURE_SQR_BASE, 0);
-	printf("clk_num = %d, sig_num = %d\n",clk_num,sig_num);
+//	printf("clk_num = %d, sig_num = %d\n",clk_num,sig_num);
 	if(clk_num)
 		fre_meas = sig_num*100000000.0/(clk_num);
 	else
@@ -308,8 +356,7 @@ double getFre(){
 
 	disFre(fre_meas);
 
-	printf("clk_num = %d, sig_num = %d.\n",clk_num,sig_num);
-	printf("Finish measuring fre.\n\n");
+//	printf("Finish measuring fre.\n\n");
 	return fre_meas;
 }
 
@@ -317,26 +364,48 @@ void getSampclk(float fre_now){
 	if(fre_now == 0){
 		KW_word = pow(2,32)/400;
 		Times =200;
+		nosig = 1;
 		IOWR(CLK_SAMPLE_KW_BASE, 0, KW_word);
 		IOWR(SAMPLE_TIME_BASE, 0, Times);
-		printf("0-------Times = %d,fre = %f,KW_word = %d\n",Times,fre_now,KW_word);
+//		printf("0-------Times = %d,fre = %f,KW_word = %d\n",Times,fre_now,KW_word);
 	}
-	else if(fre_now <= 50){	//1000Hz
-		x_mod = 0;
+	else if(fre_now <= 50){	//1000Hz--20ms
+		x_mod = 2;
+		nosig = 0;
 //		KW_word = pow(2,32)/400000;
 //		Times = (50/fre_now)*40;
 	}
+	else if(fre_now <= 50000){//1MHz--20us
+		x_mod = 3;
+		nosig = 0;
+	}
 	else if(fre_now<=500000){		//实时采样频率  10M
 		x_mod = 1;
+		nosig = 0;
 //		KW_word = pow(2,32)/40;
 //		Times =(500000/fre_now)*40;
 //		printf("1-------Times = %d,fre = %f,KW_word = %d\n",Times,fre_now,KW_word);
 	}
 	else{		//等效采样时钟200M--p130差拍时钟顺序等效采样法。
-		x_mod = 2;
+		x_mod = 0;
+		nosig = 0;
 //		KW_word = (1/(1/fre_now+0.5*pow(10,-8))*pow(2,32))/400000000;		//KW = (fre_out*pow(2,32))/400000000;
 //		Times = 4*pow(10,8)/fre_now;
 //		printf("2-------Times = %d,fre = %f,KW_word = %d\n",Times,fre_now,KW_word);
+	}
+
+	lcdRectClear(Num_X+75, Num_Y+305, Num_X+150, Num_Y+328, WHITE);
+	switch(x_mod){
+	case 0: lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "100ns");
+		break;
+	case 1: lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "2us");
+		break;
+	case 2: lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "20ms");
+		break;
+	case 3: lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "20us");
+		break;
+	default: lcdDispStringSmall(Num_X+80, Num_Y+308, RED, WHITE, "20ms");
+		break;
 	}
 }
 
@@ -375,38 +444,66 @@ void disFre(double fre_now){
 *	读取fifo--512个点		--头两个点丢弃
 *	X轴坐标与Y轴坐标的变换		--与水平分辨率、垂直分辨率相关
 *	波形存储
+*	注意：等效采样时fre需要缩放~~不然实际采样频率还是太大了。
 ****************************************************************/
 
 //Wave form Storage
 void fifo_rd(void){
+//	printf("----------------------Begin to fifo!---------------------------------------\n");
 	clk_rd = ~clk_rd;
 	IOWR(CLK_RD_BASE,0,clk_rd);//900k
 	for(int i = 0; i < 100000; i++);
-	if(!storage_done)
+	int num_n = 0;
+	while(!storage_done)
 	{
 		if(signal_num < 513)
 		{
+//			if(flag == 1){
+			clk_rd = ~clk_rd;
+			IOWR(CLK_RD_BASE,0,clk_rd);
+			clk_rd = ~clk_rd;
+			IOWR(CLK_RD_BASE,0,clk_rd);
 			(signal_num)?1:(IOWR(WRD_FLAG_BASE,0,1));
 			sig1[signal_num] = IORD(FIFO_OUT_BASE,0);
 			signal_num++;
-			printf("signal[%d] = %d\n",signal_num,sig1[signal_num]);
+//			if(sig1[signal_num]==sig1[signal_num-1]){
+//				num_n++;
+//			}
+//			else
+//				num_n = 0;
+			///
+/*			sig1_real[signal_num] = getVpp((sig1[signal_num]-rdac_zero),Mult);
+			ytrans[signal_num] = 188-320*getVpp((sig1[signal_num]-rdac_zero),Mult)/8;
+			if(ytrans[signal_num]>348){
+				ytrans[signal_num]=348;
+			}
+			else if(ytrans[signal_num]<28){
+				ytrans[signal_num]=28;
+			}
+			*/
+			///
+//			printf("num_n = %d, signal[%d] = %d\n",num_n,signal_num,sig1[signal_num]);
+//			printf("vpp = %f,sig1[%d]=%d;sig1_real[%d]=%f.\n",getVpp((sig1[signal_num]-rdac_zero),Mult),signal_num,ytrans[signal_num],signal_num,sig1_real[signal_num]);
+
+//			flag = 0;
+//			}
 		}
 		else
 		{
 			signal_num = 0;
 			storage_done = 1;
-			printf("Storage over!");
+//			printf("Storage over!\n");
 		}
 	}
-	else
+	while(storage_done)
 	{
 		IOWR(WRD_FLAG_BASE,0,0);
 		for(int num = 0;num<1025;num++)
 		{
 			(num == 1024)?1:(  storage_done = 0 );
-			clk_rd = ~clk_rd;
-			IOWR(CLK_RD_BASE,0,clk_rd);
-			for(int y = 0;y<10;y++);
+//			clk_rd = ~clk_rd;
+//			IOWR(CLK_RD_BASE,0,clk_rd);
+//			for(int y = 0;y<10;y++);
 		}
 	}
 	clk_rd = ~clk_rd;
@@ -420,26 +517,50 @@ void XTrans(float fre_now){
 //	int dr_point_num;		//画的点数
 //	int dr_sig_num;			//画的周期数
 
-	if(x_mod == 0){	//100ns---200M
-//		dr_sig_num = fre_now*pow(10,-6);
-		KW_word = (1/(1/fre_now+0.5*pow(10,-8))*pow(2,32))/400000000;		//KW = (fre_out*pow(2,32))/400000000;
-		Times = 4*pow(10,8)/fre_now;
-//		dr_point_num = 200;	//	dr_sig_num = clk_sample*xlable*10
+	if(fre_now < 1){
+		nosig = 1;
 	}
-	else if(x_mod == 1){	//2us---10M---理论上来说也是等效采样 懒得改了
-//		dr_sig_num = fre_now*2*pow(10,-5);
-		KW_word = pow(2,32)/40;
-		Times =(500000/fre_now)*40;
-//		dr_point_num = 200;
+	else
+		nosig = 0;
+
+	if(nosig == 0){
+//		printf("To change the kw and times.\n");
+		if(x_mod == 0){	//100ns---200M---等效采样频率fre=1/△
+//			dr_sig_num = fre_now*pow(10,-6);
+			KW_word = (1/(10/fre_now+0.5*pow(10,-8))*pow(2,32))/400000000;		//KW = (fre_out*pow(2,32))/400000000;
+			Times = 4*pow(10,8)/fre_now;
+//			dr_point_num = 200;	//	dr_sig_num = clk_sample*xlable*10
+		}
+		else if(x_mod == 1){	//2us---10M---理论上来说也是等效采样 懒得改了
+//			dr_sig_num = fre_now*2*pow(10,-5);
+			if(fre_now <= 50000){
+				KW_word = pow(2,32)/400;		//1M
+			}
+			else
+				KW_word = (1/(1/fre_now+pow(10,-7))*pow(2,32))/400000000;
+			Times =(500000/fre_now)*40;
+//			dr_point_num = 200;
+		}
+		else if(x_mod == 2){	//20ms--1000Hz采样频率
+//			dr_sig_num = fre_now*0.2;
+			KW_word = pow(2,32)/400000;
+			Times = (50/fre_now)*40;
+//			dr_point_num = 200;
+		}
+		else if(x_mod == 3){		//1M
+			KW_word = pow(2,32)/400;		//1M
+			Times = (50000/fre_now)*40;;
+		}
 	}
-	else if(x_mod == 2){	//20ms--1000Hz采样频率
-//		dr_sig_num = fre_now*0.2;
-		KW_word = pow(2,32)/400000;
-		Times = (50/fre_now)*40;
-//		dr_point_num = 200;
+	else{
+		KW_word = pow(2,32)/400;
+		Times =200;
 	}
+
+//	printf("x_mod = %d; fre_now = %f. KW_word = %d. Times = %d.\n",x_mod,fre_now,KW_word, Times);
 	IOWR(CLK_SAMPLE_KW_BASE, 0, KW_word);
 	IOWR(SAMPLE_TIME_BASE, 0, Times);
+
 }
 
 void YTrans(){
@@ -459,20 +580,39 @@ void YTrans(){
 
 	for(int i = 2; i < 402; i++){	//Y点坐标=中位线-总列点数*vpp(读数值-rd_zero)/量程
 		if(ifCall){		//回调
-			sig2_real[i] = getVpp((sig2[i]-rdac_zero_2),Mult2);
-			ytrans[i] = 188-320*getVpp((sig2[i]-rdac_zero_2),Mult2)/n;
+			sig2_real[i-2] = getVpp((sig2[i]-rdac_zero_2),Mult2);
+			ytrans[i-2] = 188-320*getVpp((sig2[i]-rdac_zero_2),Mult2)/n;
+			if(ytrans[i-2]>348){
+				ytrans[i-2]=348;
+			}
+			else if(ytrans[i-2]<28){
+				ytrans[i-2]=28;
+			}
 		}
 		else{			//实时
-			sig1_real[i] = getVpp((sig1[i]-rdac_zero),Mult);
-			ytrans[i] = 188-320*getVpp((sig1[i]-rdac_zero),Mult)/n;
-			ycachu[i] = ytrans[i];
+//		    if(i==2)	 printf("Begin to trans_y_vpp.\n");
+			sig1_real[i-2] = getVpp((sig1[i]-rdac_zero),Mult);
+			ytrans[i-2] = 188-320*getVpp((sig1[i]-rdac_zero),Mult)/n;
+			if(ytrans[i-2]>348){
+				ytrans[i-2]=348;
+			}
+			else if(ytrans[i-2]<28){
+				ytrans[i-2]=28;
+			}
+//			printf("signal[%d] = %d\n",i-2,sig1[i-2]);
+//			printf("vpp = %f,sig1[%d]=%f;sig1_real[%d]=%f.\n",getVpp((sig1[i]-rdac_zero),Mult),(i-2),ytrans[i-2],(i-2),sig1_real[i-2]);
+
+//			printf("sig1[%d]=%d;sig1_real[%d]=%f.\n",i-2,ytrans[i-2],i-2,sig1_real[i-2]);
+//			ycachu[i-2] = ytrans[i-2];
+//			printf("%d: Vpp = %f,量程 = %d,被减数 = %f,ytrans[%d]=%f\n",i-2,getVpp((sig1[i]-rdac_zero),Mult),n,320*getVpp((sig1[i]-rdac_zero),Mult)/n,i-2,ytrans[i-2]);
 		}
 	}
 }
 
 void Storage(/*int ifStore*/){
 	if(ifStore){
-		for(int i = 0; i< 200; i++){
+//		printf("Begin to store the wave.\n");
+		for(int i = 0; i< 512; i++){
 			sig2[i] = sig1[i];
 		}
 		vpp2 = vpp;
@@ -495,10 +635,9 @@ void Storage(/*int ifStore*/){
 
 void Auto(/*int ifAuto*/){
 	if(ifAuto){
-
+//		printf("******************************自动调波****************************\n");
 		getSampclk(fre_meas);
 		XTrans(fre_meas);
-
 		if(vpp <= 15){
 			y_mod = 0;		//--2mV
 		}
@@ -506,68 +645,189 @@ void Auto(/*int ifAuto*/){
 			y_mod = 1;		//--0.1V
 		}
 		else{
-			y_mod = 2;
+			y_mod = 2;		//--1V
 		}
 
-		trigger_v = 0;
+		lcdRectClear(Num_X+75, Num_Y+335, Num_X+150, Num_Y+358, WHITE);
+		switch(y_mod){
+		case 0: lcdDispStringSmall(Num_X+80, Num_Y+338, RED, WHITE, "0.1V");
+			break;
+		case 1: lcdDispStringSmall(Num_X+80, Num_Y+338, RED, WHITE, "1V");
+			break;
+		case 2: lcdDispStringSmall(Num_X+80, Num_Y+338, RED, WHITE, "2mV");
+			break;
+		default: lcdDispStringSmall(Num_X+80, Num_Y+338, RED, WHITE, "2mV");
+			break;
+		}
+
 		fifo_rd();
 		YTrans();
 
+//		printf("trigger_v = %f.\n",trigger_v);
 		int tri_num;
-		for(int i = 2; i < 400; i++){
-			if((sig1_real[i]>=trigger_v) && (sig1_real[i-2]<trigger_v) && (sig1_real[i-1]<trigger_v)){
-				tri_num = i;
-				printf("tri_num = %d.\n",tri_num);
-				break;
+		if(trigged == 0){
+			for(int i = 2; i < 400; i++){
+				if((sig1_real[i-1]>=(trigger_v*1000)) && (sig1_real[i-2]<(trigger_v*1000)) && (sig1_real[i-1]>sig1_real[i-2])){
+					tri_num = i-1;
+					printf("MODE=1: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num-1,sig1_real[tri_num-1],tri_num,sig1_real[tri_num]);
+					printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+/*				else if((sig1_real[i]>=(trigger_v*1000)) && (sig1_real[i-2]>=(trigger_v*1000)) && (sig1_real[i-1]>=(trigger_v*1000))&&(sig1_real[i-1]==sig1_real[i-2])&&(sig1_real[i-1]==sig1_real[i])){
+					tri_num = i-2;
+//					printf("tri_num = %d.\n",tri_num);
+					printf("MODE=2: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num+1,sig1_real[tri_num+1],tri_num,sig1_real[tri_num]);
+					printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+				*/
 			}
 		}
-		for(int i = tri_num; i < tri_num+200; i++){
-			lcdDrawLine((i-tri_num)*2+220, ycachu[i], (i-tri_num)*2+222, ycachu[i+1], WHITE);
-			lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], BLACK);
+		
+		/*
+		if(trigged == 0){
+			for(int i = 2; i < 400; i++){
+//				if(i == 2)
+//					printf("sig1_real[%d]=%f\n",i,sig1_real[i]);
+//				if((sig1_real[i]>=trigger_v) && (sig1_real[i-2]<trigger_v) && (sig1_real[i-1]<trigger_v)){
+				if((sig1_real[i-1]>=trigger_v) && (sig1_real[i-2]<trigger_v)){
+					tri_num = i-1;
+					printf("tri_num = %d.\n",tri_num);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+				else if((sig1_real[i]>=trigger_v) && (sig1_real[i-2]>=trigger_v) && (sig1_real[i-1]>=trigger_v)){
+					tri_num = i-2;
+//					printf("tri_num = %d.\n",tri_num);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+			}
 		}
-
-		ifAuto = 0;
+		*/
+		if(trigged ==1){
+//			printf("Begin to Drawing----~~~~!!!!!\n");
+			for(int i = tri_num; i < tri_num+199; i++){
+				lcdDrawLine((i-tri_num)*2+220, ycachu[i-tri_num], (i-tri_num)*2+222, ycachu[i+1-tri_num], WHITE);
+				lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], RED);
+//				if(i == tri_num)
+//					printf("y_sig[%d] = %d; ytrans[%d] = %f; ycachu[%d] = %f\n",(i-tri_num),sig1[i+2],(i-tri_num),ytrans[i],(i-tri_num),ycachu[i-tri_num]);
+			}
+			for(int i = tri_num; i < tri_num+200; i++){
+				ycachu[i-tri_num] = ytrans[i];
+			}
+			trigged = 0;
+		}
 	}
 }
 
 void Recall(){
 	if(ifCall){
+//		printf("Begin to show the stored wave.\n");
 		YTrans();
-		lcdRectClear(220, 28, 620, 348, WHITE);
-		lcdDrawGrid(220, 28, 8, 10, 40, DGRAY);
+		if(clearscr){
+			printf("ifCall = %d, clearscr = %d.\n",ifCall,clearscr);
+			lcdRectClear(220, 28, 620, 348, WHITE);
+			lcdDrawGrid(220, 28, 8, 10, 40, DGRAY);
+			clearscr = 0;
+		}
 
 		int tri_num;
-		for(int i = 2; i < 400; i++){
-			if((sig2_real[i]>=trigger_v) && (sig2_real[i-2]<trigger_v) && (sig2_real[i-1]<trigger_v)){
-				tri_num = i;
-				printf("tri_num = %d.\n",tri_num);
-				break;
+		if(trigged == 0){
+			for(int i = 2; i < 400; i++){
+				if((sig2_real[i-1]>=(trigger_v*1000)) && (sig2_real[i-2]<(trigger_v*1000)) && (sig2_real[i-1]>sig2_real[i-2])){
+					tri_num = i-1;
+					printf("MODE=1: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num-1,sig2_real[tri_num-1],tri_num,sig2_real[tri_num]);
+					printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+/*				else if((sig2_real[i]>=(trigger_v*1000)) && (sig2_real[i-2]>=(trigger_v*1000)) && (sig2_real[i-1]>=(trigger_v*1000))&&(sig2_real[i-1]==sig2_real[i-2])&&(sig2_real[i-1]==sig2_real[i])){
+					tri_num = i-2;
+//					printf("tri_num = %d.\n",tri_num);
+					printf("MODE=2: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num+1,sig2_real[tri_num+1],tri_num,sig2_real[tri_num]);
+					printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+				*/
 			}
 		}
-		for(int i = tri_num; i < tri_num+200; i++){
-			lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], BLACK);
+
+		if(trigged == 1){
+			for(int i = tri_num; i < tri_num+200; i++){
+				lcdDrawLine((i-tri_num)*2+220, ycachu[i-tri_num], (i-tri_num)*2+222, ycachu[i+1-tri_num], WHITE);
+				lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], RED);
+			}
+			for(int i = tri_num; i < tri_num+200; i++){
+				ycachu[i-tri_num] = ytrans[i];
+			}
+			trigged = 0;
 		}
 	}
 	else{
-		lcdRectClear(220, 28, 620, 348, WHITE);
-		lcdDrawGrid(220, 28, 8, 10, 40, DGRAY);
+		if(huifu == 1){
+			lcdRectClear(220, 28, 620, 348, WHITE);
+			lcdDrawGrid(220, 28, 8, 10, 40, DGRAY);
+			huifu = 0;
+		}
 	}
 }
 
 void Single(){
 	if(ifSingle){
+//		printf("Begin to single mod!\n");
+		XTrans(fre_meas);
+		fifo_rd();
 		YTrans();
+
 		int tri_num;
-		for(int i = 2; i < 400; i++){
-			if((sig1_real[i]>=trigger_v) && (sig1_real[i-2]<trigger_v) && (sig1_real[i-1]<trigger_v)){
-				tri_num = i;
-				printf("tri_num = %d.\n",tri_num);
-				break;
+		if(trigged == 0){
+			for(int i = 2; i < 400; i++){
+				if((sig1_real[i-1]>=(trigger_v*1000)) && (sig1_real[i-2]<(trigger_v*1000)) && (sig1_real[i-1]>sig1_real[i-2])){
+					tri_num = i-1;
+					printf("MODE=1: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num-1,sig1_real[tri_num-1],tri_num,sig1_real[tri_num]);
+					printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+/*				else if((sig1_real[i]>=(trigger_v*1000)) && (sig1_real[i-2]>=(trigger_v*1000)) && (sig1_real[i-1]>=(trigger_v*1000))&&(sig1_real[i-1]==sig1_real[i-2])&&(sig1_real[i-1]==sig1_real[i])){
+					tri_num = i-2;
+//					printf("tri_num = %d.\n",tri_num);
+					printf("MODE=2: tri_num = %d. sig1[%d] = %f. sig1[%d] = %f.\n",tri_num,tri_num+1,sig1_real[tri_num+1],tri_num,sig1_real[tri_num]);
+					printf("rdv = %d; rdmax = %d; rdmin = %d; rdac_zero = %d; vpp = %f.\n",rdv,rdmax,rdmin,rdac_zero,vpp);
+					if(tri_num < 201)
+						trigged = 1;
+					break;
+				}
+				*/
 			}
 		}
-		for(int i = tri_num; i < tri_num+200; i++){
-			lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], BLACK);
+		if(trigged == 1){
+			for(int i = tri_num; i < tri_num+199; i++){
+				lcdDrawLine((i-tri_num)*2+220, ycachu[i-tri_num], (i-tri_num)*2+222, ycachu[i+1-tri_num], WHITE);
+				lcdDrawLine((i-tri_num)*2+220, ytrans[i], (i-tri_num)*2+222, ytrans[i+1], RED);
+//					printf("X_before[%d] = %d; Y_before[%d] = %d.\n\n",i-tri_num,(i-tri_num)*2+220,i-tri_num,ytrans[i]);
+			}
+			for(int i = tri_num; i < tri_num+200; i++){
+				ycachu[i-tri_num] = ytrans[i];
+			}
+			trigged = 0;
 		}
+
+		ifStore = 1;
+		Storage();
+
+		ifRun = 0;
 	}
 }
 
@@ -580,7 +840,7 @@ void Single(){
 
 void setSwitch(/*int ifChoosed*/){
 	if(!ifChoosed){
-		IOWR(SWITCH_MOD_BASE, 0, 2);	//衰减3
+		IOWR(SWITCH_MOD_BASE, 0, 0);	//衰减3
 		u16 rdv = 0;
 		double vpp_init;
 		while(!IORD(VPP_FOUND_BASE, 0));
@@ -588,9 +848,9 @@ void setSwitch(/*int ifChoosed*/){
 		vpp_init = getVpp(rdv, Mul1);
 
 		if(vpp_init > 126){
-			switch_mod = 2;
+			switch_mod = 0;
 			Mult = Mul1;
-			printf("switch_mode == 2, Mult = %f.\n",Mult);
+			printf("switch_mode == 0, Mult = %f.\n",Mult);
 		}
 		else{
 			IOWR(SWITCH_MOD_BASE, 0, 1);
@@ -603,13 +863,13 @@ void setSwitch(/*int ifChoosed*/){
 				printf("switch_mode == 1, Mult = %f.\n",Mult);
 			}
 			else{
-				IOWR(SWITCH_MOD_BASE, 0, 0);	//放大100
-				switch_mod = 0;
+				IOWR(SWITCH_MOD_BASE, 0, 2);	//放大100
+				switch_mod = 2;
 				Mult = Mul3;
-				printf("switch_mode == 0, Mult = %f.\n",Mult);
+				printf("switch_mode == 2, Mult = %f.\n",Mult);
 			}
 		}
 
-		ifChoosed = 1;
+		ifChoosed = 0;
 	}
 }
